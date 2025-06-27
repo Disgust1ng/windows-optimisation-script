@@ -1,25 +1,25 @@
+# Windows Privacy & Performance Optimization Script
+
 # === Bitsum Highest Performance Plan ===
 Invoke-WebRequest -Uri "https://bitsum.com/files/bitsum-highest-performance.pow" -OutFile "$env:TEMP\bitsum.pow"
 powercfg -import "$env:TEMP\bitsum.pow"
 powercfg.exe /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR IdleDisable 1
 powercfg.exe /setactive SCHEME_CURRENT
 
-# === Performance & Security Tweaks ===
-Stop-Service -Name dps -Force
+# === Disable Services ===
+Stop-Service -Name dps -Force -ErrorAction SilentlyContinue
 Set-Service -Name "dps" -StartupType Manual
-Stop-Service -Name "SysMain" -Force
+Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
 Set-Service -Name "SysMain" -StartupType Manual
 
-Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Session Manager\Kernel" -Name "ThreadDpcEnable" -Value 0 -Type DWord
-
-# Spectre/Meltdown
+# === Spectre/Meltdown Mitigations Disabled (Performance Boost - Security Tradeoff) ===
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverride" -Value 3 -Type DWord
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverrideMask" -Value 3 -Type DWord
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "DisableMeltdown" -Value 1 -Type DWord
 
-# === Disable Telemetry, Feedback, Location Tracking, and Personalization ===
+# === Registry Tweaks ===
 $regEdits = @(
-    # Disable Input Personalization
+    # Input Personalization
     "HKCU:\Software\Microsoft\InputPersonalization\RestrictImplicitInkCollection",1,
     "HKCU:\Software\Microsoft\InputPersonalization\RestrictImplicitTextCollection",1,
     "HKCU:\Software\Microsoft\InputPersonalization\TrainedDataStore\HarvestContacts",0,
@@ -29,7 +29,7 @@ $regEdits = @(
     "HKLM:\Software\Microsoft\InputPersonalization\TrainedDataStore\HarvestContacts",0,
     "HKLM:\Software\Microsoft\Personalization\Settings\AcceptedPrivacyPolicy",0,
 
-    # Cortana & Search Restrictions
+    # Cortana & Search
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Windows Search\CortanaConsent",0,
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\Windows Search\CortanaConsent",0,
     "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Windows Search\ConnectedSearchUseWeb",0,
@@ -37,7 +37,7 @@ $regEdits = @(
     "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Windows Search\DisableWebSearch",1,
     "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search\DisableWebSearch",1,
 
-    # Speech Model Updates
+    # Speech
     "HKCU:\SOFTWARE\Microsoft\Speech_OneCore\Preferences\ModelDownloadAllowed",0,
     "HKLM:\SOFTWARE\Microsoft\Speech_OneCore\Preferences\ModelDownloadAllowed",0,
     "HKLM:\SOFTWARE\Policies\Microsoft\Speech\AllowSpeechModelUpdate",0,
@@ -54,7 +54,7 @@ $regEdits = @(
     "HKCU:\SOFTWARE\Policies\Microsoft\Windows\DataCollection\LimitDiagnosticLogCollection",1,
     "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection\LimitDiagnosticLogCollection",1,
 
-    # Disable Windows Feedback and Suggestions
+    # Content Delivery Manager - Disable Suggestions
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SystemPaneSuggestionsEnabled",0,
     "HKLM:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SystemPaneSuggestionsEnabled",0,
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SubscribedContent-338387Enabled",0,
@@ -64,15 +64,20 @@ $regEdits = @(
 )
 
 for ($i = 0; $i -lt $regEdits.Length; $i += 2) {
-    $pathProp = $regEdits[$i].Split('\')
-    $path = ($pathProp[0..($pathProp.Length - 2)] -join '\')
-    $name = $pathProp[-1]
+    $fullPath = $regEdits[$i]
     $value = $regEdits[$i + 1]
+    $split = $fullPath.Split(':')
+    $hive = $split[0] + ':'
+    $keyName = ($split[1] -split '\\')
+    $name = $keyName[-1]
+    $path = $hive + ($keyName[0..($keyName.Length - 2)] -join '\')
     try {
-        New-Item -Path $path -Force | Out-Null
+        if (!(Test-Path $path)) {
+            New-Item -Path $path -Force | Out-Null
+        }
         Set-ItemProperty -Path $path -Name $name -Value $value -Type DWord
     } catch {
-        Write-Warning "Failed to set $name at $path"
+        Write-Warning "❌ Failed to set $name at $path"
     }
 }
 
@@ -84,11 +89,22 @@ $WUSettings = @(
     "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Metadata\PreventDeviceMetadataFromNetwork",1
 )
 
-foreach ($item in $WUSettings) {
-    $parts = $item.Split('\')
-    $val = $parts[-1]
-    $path = ($parts[0..($parts.Length - 2)] -join '\')
-    Set-ItemProperty -Path $path -Name $val -Value $item.Split(',')[1] -Type DWord
+for ($j = 0; $j -lt $WUSettings.Length; $j += 2) {
+    $fullPath = $WUSettings[$j]
+    $value = $WUSettings[$j + 1]
+    $split = $fullPath.Split(':')
+    $hive = $split[0] + ':'
+    $keyName = ($split[1] -split '\\')
+    $name = $keyName[-1]
+    $path = $hive + ($keyName[0..($keyName.Length - 2)] -join '\')
+    try {
+        if (!(Test-Path $path)) {
+            New-Item -Path $path -Force | Out-Null
+        }
+        Set-ItemProperty -Path $path -Name $name -Value $value -Type DWord
+    } catch {
+        Write-Warning "❌ Failed to set $name at $path"
+    }
 }
 
 Write-Host "✅ Optimization script complete. Reboot recommended."
