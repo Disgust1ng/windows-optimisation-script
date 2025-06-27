@@ -1,5 +1,20 @@
 # Windows Privacy & Performance Optimization Script
 
+# === Timer Resolution ===
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Kernel" -Name "GlobalTimerResolutionRequests" -Value 1 -Type DWord
+
+# Create Scheduled Task to Apply 0.5ms Timer Resolution System-wide on Startup
+$exePath = Join-Path $PSScriptRoot "resources\SetTimerResolution.exe"
+if (Test-Path $exePath) {
+    $action = New-ScheduledTaskAction -Execute $exePath -Argument "--resolution 5000 --no-console"
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+    Register-ScheduledTask -TaskName "SetTimerResolution" -Action $action -Trigger $trigger -Principal $principal -Force
+    Write-Host "✅ Timer Resolution scheduled task created using bundled executable."
+} else {
+    Write-Warning "⚠ 'SetTimerResolution.exe' not found in 'resources' folder. Please ensure it exists there."
+}
+
 # === Bitsum Highest Performance Plan ===
 Invoke-WebRequest -Uri "https://bitsum.com/files/bitsum-highest-performance.pow" -OutFile "$env:TEMP\bitsum.pow"
 powercfg -import "$env:TEMP\bitsum.pow"
